@@ -70,37 +70,12 @@ jobs:
           retention-days: 7
 
   imagem:
-    name: Build da imagem
+    name: Build e teste do container
     runs-on: ubuntu-latest
     needs: testes
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Constroi a imagem
-        run: docker build -t encurtador-url:${{ github.sha }} .
-
-      - name: Sobe o container e verifica o health
-        run: |
-          docker run -d --name encurtador -p 8000:8000 encurtador-url:${{ github.sha }}
-          for tentativa in $(seq 1 10); do
-            if curl -fs http://localhost:8000/health; then
-              echo "API respondeu"
-              exit 0
-            fi
-            sleep 3
-          done
-          docker logs encurtador
-          exit 1
-
-      - name: Testa o fluxo de encurtamento
-        run: |
-          codigo=$(curl -fs -X POST http://localhost:8000/links \
-            -H "Content-Type: application/json" \
-            -d '{"url": "https://pucpr.br", "codigo": "pucpr"}' | grep -o '"codigo":"[^"]*"')
-          echo "criado: $codigo"
-          curl -fs -o /dev/null -w "%{http_code}\n" http://localhost:8000/pucpr | grep -q 307
-
-      - name: Remove o container
-        if: always()
-        run: docker rm -f encurtador
+      - name: Constroi a imagem e valida o container
+        run: bash scripts/testar_container.sh encurtador-url:${{ github.sha }}
