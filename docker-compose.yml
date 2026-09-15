@@ -1,0 +1,16 @@
+services:
+  api:
+    build: .
+    image: encurtador-url:latest
+    container_name: encurtador-url
+    ports:
+      - "8000:8000"
+    environment:
+      BASE_URL: http://localhost:8000
+      DATABASE_PATH: /app/data/links.db
+    volumes:
+      - dados:/app/data
+    restart: unless-stopped
+
+volumes:
+  dados:
