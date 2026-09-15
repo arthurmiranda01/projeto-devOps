@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  testes:
+    name: Testes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configura o Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Instala as dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Roda os testes
+        run: pytest
+
+  imagem:
+    name: Build da imagem
+    runs-on: ubuntu-latest
+    needs: testes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Constroi a imagem
+        run: docker build -t encurtador-url:${{ github.sha }} .
+
+      - name: Sobe o container e verifica o health
+        run: |
+          docker run -d --name encurtador -p 8000:8000 encurtador-url:${{ github.sha }}
+          for tentativa in $(seq 1 10); do
+            if curl -fs http://localhost:8000/health; then
+              echo "API respondeu"
+              exit 0
+            fi
+            sleep 3
+          done
+          docker logs encurtador
+          exit 1
+
+      - name: Remove o container
+        if: always()
+        run: docker rm -f encurtador
