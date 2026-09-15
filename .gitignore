@@ -220,3 +220,6 @@ __marimo__/
 # Banco local do encurtador
 data/
 *.db
+
+# Documentacao estatica gerada
+site/

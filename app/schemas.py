@@ -1,11 +1,9 @@
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 
 class LinkEntrada(BaseModel):
     url: str = Field(..., description="URL original que sera encurtada")
-    codigo: Optional[str] = Field(None, description="Codigo personalizado opcional")
+    codigo: str | None = Field(None, description="Codigo personalizado opcional")
 
 
 class LinkSaida(BaseModel):

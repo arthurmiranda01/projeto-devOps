@@ -42,9 +42,9 @@ def criar_link(entrada: LinkEntrada):
     try:
         link = shortener.encurtar(entrada.url, entrada.codigo)
     except (shortener.UrlInvalida, shortener.CodigoInvalido) as erro:
-        raise HTTPException(status_code=400, detail=str(erro))
+        raise HTTPException(status_code=400, detail=str(erro)) from erro
     except shortener.CodigoEmUso as erro:
-        raise HTTPException(status_code=409, detail=str(erro))
+        raise HTTPException(status_code=409, detail=str(erro)) from erro
     return montar_resposta(link)
 
 

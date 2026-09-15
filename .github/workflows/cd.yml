@@ -1,0 +1,111 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  imagem:
+    name: Entrega da imagem no GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Define o nome da imagem
+        run: |
+          repositorio=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGEM=ghcr.io/$repositorio" >> "$GITHUB_ENV"
+
+      - name: Prepara o Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Autentica no GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Monta as tags da imagem
+        id: metadados
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGEM }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+            type=ref,event=pr
+
+      - name: Constroi e publica a imagem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.metadados.outputs.tags }}
+          labels: ${{ steps.metadados.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Mostra as tags entregues
+        run: echo "${{ steps.metadados.outputs.tags }}"
+
+  documentacao:
+    name: Build da documentacao
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configura o Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instala as dependencias
+        run: pip install -r requirements.txt
+
+      - name: Gera a documentacao estatica
+        run: python scripts/gerar_docs.py
+
+      - name: Configura o GitHub Pages
+        if: github.event_name == 'push'
+        uses: actions/configure-pages@v5
+
+      - name: Envia o site como artefato
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy no GitHub Pages
+    runs-on: ubuntu-latest
+    needs: [imagem, documentacao]
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publicacao.outputs.page_url }}
+
+    steps:
+      - name: Publica o site
+        id: publicacao
+        uses: actions/deploy-pages@v4
