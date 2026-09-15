@@ -64,9 +64,66 @@ jobs:
       - name: Mostra as tags entregues
         run: echo "${{ steps.metadados.outputs.tags }}"
 
+  dockerhub:
+    name: Entrega da imagem no Docker Hub
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verifica as credenciais do Docker Hub
+        id: credenciais
+        env:
+          USUARIO: ${{ secrets.DOCKERHUB_USERNAME }}
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$USUARIO" ] && [ -n "$TOKEN" ]; then
+            echo "configurado=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configurado=false" >> "$GITHUB_OUTPUT"
+            echo "Segredos DOCKERHUB_USERNAME e DOCKERHUB_TOKEN ausentes: publicacao ignorada."               >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Prepara o Buildx
+        if: steps.credenciais.outputs.configurado == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Autentica no Docker Hub
+        if: steps.credenciais.outputs.configurado == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Monta as tags da imagem
+        id: metadados
+        if: steps.credenciais.outputs.configurado == 'true'
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKERHUB_USERNAME }}/encurtador-url
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Constroi e publica a imagem
+        if: steps.credenciais.outputs.configurado == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.metadados.outputs.tags }}
+          labels: ${{ steps.metadados.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   documentacao:
     name: Build da documentacao
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -84,8 +141,10 @@ jobs:
         run: python scripts/gerar_docs.py
 
       - name: Configura o GitHub Pages
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Envia o site como artefato
         uses: actions/upload-pages-artifact@v3

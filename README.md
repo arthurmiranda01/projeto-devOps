@@ -45,6 +45,36 @@ A API sobe em `http://localhost:8000` e a documentacao interativa fica em
 docker compose up --build
 ```
 
+A API fica disponivel em `http://localhost:8000` e os dados ficam em um volume
+chamado `dados`, entao os links sobrevivem ao reinicio do container.
+
+Sem o compose:
+
+```bash
+docker build -t encurtador-url .
+docker run -p 8000:8000 -v encurtador-dados:/app/data encurtador-url
+```
+
+### Como a imagem foi montada
+
+- Build em dois estagios: o primeiro instala as dependencias em um virtualenv e o
+  segundo copia apenas esse virtualenv, deixando o `pip` e o cache fora da imagem final.
+- Baseada na `python:3.12-slim`, com a versao parametrizada pelo build arg
+  `PYTHON_VERSION`.
+- A aplicacao roda com o usuario `appuser` (uid 10001), sem privilegios de root.
+- `HEALTHCHECK` consultando `/health`, usado tanto pelo Docker quanto pelo compose.
+- O `.dockerignore` mantem testes, scripts e o ambiente virtual local fora do contexto.
+
+### Testando o container
+
+```bash
+bash scripts/testar_container.sh
+```
+
+O script constroi a imagem, sobe o container, espera o healthcheck ficar saudavel,
+confere que o processo nao roda como root e testa a criacao de um link, o
+redirecionamento, o contador de acessos e a remocao. E o mesmo script usado no CI.
+
 ## Testes e qualidade
 
 ```bash
@@ -100,7 +130,9 @@ app/
   schemas.py     modelos de entrada e saida
   main.py        rotas da API
 tests/           testes com pytest
-scripts/         geracao da documentacao estatica
+scripts/
+  gerar_docs.py        documentacao estatica
+  testar_container.sh  teste de ponta a ponta do container
 .github/workflows/
   ci.yml         lint, testes e build da imagem
   cd.yml         entrega da imagem e deploy da documentacao
@@ -119,8 +151,9 @@ tambem sob demanda:
 1. **Qualidade de codigo** - `ruff check` e `ruff format --check`.
 2. **Testes** - pytest com cobertura nas versoes 3.10 e 3.12 do Python; o build falha
    se a cobertura ficar abaixo de 85% e o relatorio fica salvo como artefato.
-3. **Build da imagem** - constroi a imagem Docker, sobe o container e valida o
-   `/health`, a criacao de um link e o redirecionamento.
+3. **Build e teste do container** - constroi a imagem Docker, sobe o container e valida o
+   `/health`, a criacao de um link e o redirecionamento, pelo
+   `scripts/testar_container.sh`.
 
 ### CodeQL (`codeql.yml`)
 
@@ -135,8 +168,11 @@ na `main`:
 1. **Entrega da imagem no GHCR** - publica a imagem em
    `ghcr.io/arthurmiranda01/projeto-devops` com as tags `latest` e o hash do commit.
    Em pull request a imagem so e construida, sem publicar.
-2. **Build da documentacao** - gera o site estatico a partir do OpenAPI da API.
-3. **Deploy no GitHub Pages** - publica a documentacao em
+2. **Entrega da imagem no Docker Hub** - publica a mesma imagem em
+   `<usuario>/encurtador-url`. A etapa depende dos segredos `DOCKERHUB_USERNAME` e
+   `DOCKERHUB_TOKEN`; sem eles a publicacao e apenas ignorada, sem quebrar o pipeline.
+3. **Build da documentacao** - gera o site estatico a partir do OpenAPI da API.
+4. **Deploy no GitHub Pages** - publica a documentacao em
    https://arthurmiranda01.github.io/projeto-devOps/ (apenas a partir da `main`).
 
 Baixando e rodando a imagem publicada:

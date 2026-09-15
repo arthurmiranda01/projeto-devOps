@@ -1,22 +1,52 @@
-FROM python:3.12-slim
+# syntax=docker/dockerfile:1
+
+ARG PYTHON_VERSION=3.12
+
+FROM python:${PYTHON_VERSION}-slim AS builder
+
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=bind,source=requirements.txt,target=requirements.txt \
+    pip install -r requirements.txt
+
+
+FROM python:${PYTHON_VERSION}-slim AS runtime
+
+LABEL org.opencontainers.image.title="Encurtador de URLs" \
+      org.opencontainers.image.description="API de encurtamento de links da disciplina de DevOps" \
+      org.opencontainers.image.source="https://github.com/arthurmiranda01/projeto-devOps" \
+      org.opencontainers.image.licenses="MIT"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
     DATABASE_PATH=/app/data/links.db
+
+ARG UID=10001
+RUN useradd \
+      --uid ${UID} \
+      --no-create-home \
+      --home-dir /nonexistent \
+      --shell /usr/sbin/nologin \
+      appuser
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
+COPY --from=builder /opt/venv /opt/venv
 COPY app ./app
 
-RUN mkdir -p /app/data && useradd --create-home encurtador && chown -R encurtador /app
-USER encurtador
+RUN mkdir -p /app/data && chown -R appuser /app/data
+
+USER appuser
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
