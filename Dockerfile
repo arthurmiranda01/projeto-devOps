@@ -28,13 +28,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DATABASE_PATH=/app/data/links.db
 
 ARG UID=10001
-RUN adduser \
-      --disabled-password \
-      --gecos "" \
-      --home /nonexistent \
-      --shell /sbin/nologin \
-      --no-create-home \
+RUN useradd \
       --uid ${UID} \
+      --no-create-home \
+      --home-dir /nonexistent \
+      --shell /usr/sbin/nologin \
       appuser
 
 WORKDIR /app
