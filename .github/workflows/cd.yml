@@ -120,6 +120,10 @@ jobs:
   documentacao:
     name: Build da documentacao
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -137,8 +141,10 @@ jobs:
         run: python scripts/gerar_docs.py
 
       - name: Configura o GitHub Pages
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Envia o site como artefato
         uses: actions/upload-pages-artifact@v3
