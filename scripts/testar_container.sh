@@ -12,8 +12,8 @@ limpar() {
 }
 trap limpar EXIT
 
-echo "==> Construindo a imagem $IMAGEM"
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
+  echo "==> Construindo a imagem $IMAGEM"
   docker build -t "$IMAGEM" .
 fi
 
