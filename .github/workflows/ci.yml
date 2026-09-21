@@ -59,14 +59,20 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Roda os testes com cobertura
-        run: pytest
+        run: pytest --junitxml=test-results.xml
+
+      - name: Resume os testes na execucao
+        if: always()
+        run: python scripts/resumir_testes.py test-results.xml >> "$GITHUB_STEP_SUMMARY"
 
       - name: Guarda o relatorio de cobertura
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: cobertura-python-${{ matrix.python-version }}
-          path: coverage.xml
+          path: |
+            coverage.xml
+            test-results.xml
           retention-days: 7
 
   imagem:

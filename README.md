@@ -83,6 +83,28 @@ ruff check .           # lint
 ruff format --check .  # formatacao
 ```
 
+A suite tem 79 testes e cobre 100% do pacote `app`. Ela e dividida em tres niveis:
+
+**Testes unitarios isolados** - `tests/test_shortener_unitario.py` troca o modulo
+`storage` por dublês em memoria com `monkeypatch`. Assim cada funcao do shortener e
+verificada sozinha, sem SQLite: o sorteio de codigos, as tentativas de
+`gerar_codigo_livre` ate achar um codigo livre (e o erro quando esgota), a validacao de
+URL e de codigo, e quais chamadas ao banco cada caminho deve ou nao fazer. Por exemplo,
+uma URL invalida precisa falhar **antes** de qualquer acesso ao banco.
+
+**Testes unitarios por modulo** - `tests/test_storage.py` exercita a persistencia
+direto, sem passar pela API (ordenacao, limite, contador de acessos, remocao, chave
+duplicada). `tests/test_schemas.py` cobre as funcoes puras: validacao dos modelos
+Pydantic e a montagem da `url_curta` a partir da `BASE_URL`.
+
+**Testes de integracao** - `tests/test_api.py` sobe a aplicacao com o `TestClient` do
+FastAPI e verifica as rotas de ponta a ponta, incluindo os codigos de status
+(201, 307, 400, 404, 409). `scripts/testar_container.sh` vai um nivel acima e testa a
+imagem Docker ja construida.
+
+Cada teste roda contra um banco SQLite temporario, criado pela fixture `banco_temporario`
+do `tests/conftest.py`, entao a ordem de execucao nao importa e nada fica sujo entre eles.
+
 ## Endpoints
 
 | Metodo | Rota | Descricao |
@@ -129,9 +151,16 @@ app/
   shortener.py   geracao de codigos e validacoes
   schemas.py     modelos de entrada e saida
   main.py        rotas da API
-tests/           testes com pytest
+tests/
+  conftest.py                 fixtures de banco temporario e cliente HTTP
+  test_shortener_unitario.py  unitarios do shortener com o banco mockado
+  test_storage.py             unitarios da camada de persistencia
+  test_schemas.py             unitarios dos modelos e da montagem da resposta
+  test_shortener.py           regras de negocio com banco real
+  test_api.py                 testes de integracao das rotas
 scripts/
   gerar_docs.py        documentacao estatica
+  resumir_testes.py    resumo dos testes no relatorio do CI
   testar_container.sh  teste de ponta a ponta do container
 .github/workflows/
   ci.yml         lint, testes e build da imagem
@@ -151,7 +180,9 @@ tambem sob demanda:
 
 1. **Qualidade de codigo** - `ruff check` e `ruff format --check`.
 2. **Testes** - pytest com cobertura nas versoes 3.10 e 3.12 do Python; o build falha
-   se a cobertura ficar abaixo de 85% e o relatorio fica salvo como artefato.
+   se a cobertura ficar abaixo de 85%. O resultado e resumido em uma tabela no relatorio
+   da execucao, visivel direto na pull request, e os relatorios de cobertura e de testes
+   ficam salvos como artefato.
 3. **Build e teste do container** - constroi a imagem Docker, sobe o container e valida o
    `/health`, a criacao de um link e o redirecionamento, pelo
    `scripts/testar_container.sh`.
