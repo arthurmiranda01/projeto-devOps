@@ -137,6 +137,7 @@ scripts/
   ci.yml         lint, testes e build da imagem
   cd.yml         entrega da imagem e deploy da documentacao
   codeql.yml     analise estatica de seguranca
+  alertas.yml    notificacoes no Discord
 ```
 
 ## Pipeline de CI/CD
@@ -181,9 +182,33 @@ Baixando e rodando a imagem publicada:
 docker run -p 8000:8000 ghcr.io/arthurmiranda01/projeto-devops:latest
 ```
 
+### Alertas (`alertas.yml`)
+
+Envia notificacoes para um canal do Discord por webhook. O alerta dispara em tres
+situacoes:
+
+1. **Push ou merge na `main`** - mostra a mensagem do commit, o autor, o hash curto e o
+   link da comparacao. Merges recebem um titulo e uma cor proprios.
+2. **Fim de uma execucao do CI ou do CD** - avisa se o pipeline terminou com sucesso,
+   falhou ou foi cancelado, com link direto para a execucao.
+3. **Disparo manual** (`workflow_dispatch`) - envia uma mensagem de teste, util para
+   conferir a configuracao.
+
+A URL do webhook fica no segredo `DISCORD_WEBHOOK` do repositorio. Sem o segredo o job
+apenas registra o aviso no resumo da execucao e termina com sucesso, sem quebrar o
+pipeline.
+
+Para configurar:
+
+1. No Discord, abra **Editar canal > Integracoes > Webhooks > Novo webhook** e copie a
+   URL.
+2. No GitHub, va em **Settings > Secrets and variables > Actions > New repository
+   secret**, com o nome `DISCORD_WEBHOOK` e a URL copiada como valor.
+3. Em **Actions > Alertas > Run workflow**, dispare o workflow para validar o envio.
+
 ## Fluxo de trabalho
 
 O desenvolvimento acontece em branches `feature/*`. Toda mudanca entra na `main` por
 pull request e so pode ser mesclada depois que os workflows de CI, CodeQL e CD passam.
 Com o merge na `main`, o CD publica a imagem no GHCR e atualiza a documentacao no
-GitHub Pages.
+GitHub Pages, e o workflow de alertas avisa no Discord.

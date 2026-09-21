@@ -1,0 +1,175 @@
+name: Alertas
+
+on:
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: [CI, CD]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alertas-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  discord:
+    name: Envia o alerta no Discord
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verifica o webhook do Discord
+        id: webhook
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          if [ -n "$DISCORD_WEBHOOK" ]; then
+            echo "configurado=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configurado=false" >> "$GITHUB_OUTPUT"
+            echo "Segredo DISCORD_WEBHOOK ausente: alerta ignorado." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Monta o alerta de commit ou merge
+        if: steps.webhook.outputs.configurado == 'true' && github.event_name == 'push'
+        env:
+          MENSAGEM: ${{ github.event.head_commit.message }}
+          AUTOR: ${{ github.event.head_commit.author.name }}
+          URL_COMMIT: ${{ github.event.head_commit.url }}
+          SHA: ${{ github.sha }}
+          REPOSITORIO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          AVATAR: ${{ github.event.sender.avatar_url }}
+          URL_COMPARACAO: ${{ github.event.compare }}
+        run: |
+          titulo_commit=$(printf '%s' "$MENSAGEM" | head -n 1)
+          if printf '%s' "$titulo_commit" | grep -qiE '^merge'; then
+            titulo="Merge na branch main"
+            cor=10181046
+          else
+            titulo="Novo commit na branch main"
+            cor=5814783
+          fi
+          jq -n \
+            --arg titulo "$titulo" \
+            --arg descricao "$titulo_commit" \
+            --arg url "$URL_COMMIT" \
+            --arg autor "$AUTOR" \
+            --arg avatar "$AVATAR" \
+            --arg repositorio "$REPOSITORIO" \
+            --arg branch "$BRANCH" \
+            --arg sha "${SHA:0:7}" \
+            --arg comparacao "$URL_COMPARACAO" \
+            --arg data "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson cor "$cor" \
+            '{
+              username: "Alertas do Encurtador",
+              embeds: [{
+                title: $titulo,
+                description: $descricao,
+                url: $url,
+                color: $cor,
+                timestamp: $data,
+                author: { name: $autor, icon_url: $avatar },
+                fields: [
+                  { name: "Repositorio", value: $repositorio, inline: true },
+                  { name: "Branch", value: $branch, inline: true },
+                  { name: "Commit", value: $sha, inline: true },
+                  { name: "Alteracoes", value: $comparacao, inline: false }
+                ],
+                footer: { text: "GitHub Actions" }
+              }]
+            }' > payload.json
+
+      - name: Monta o alerta de resultado do pipeline
+        if: steps.webhook.outputs.configurado == 'true' && github.event_name == 'workflow_run'
+        env:
+          NOME: ${{ github.event.workflow_run.name }}
+          CONCLUSAO: ${{ github.event.workflow_run.conclusion }}
+          URL_EXECUCAO: ${{ github.event.workflow_run.html_url }}
+          AUTOR: ${{ github.event.workflow_run.actor.login }}
+          AVATAR: ${{ github.event.workflow_run.actor.avatar_url }}
+          REPOSITORIO: ${{ github.repository }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          TITULO_COMMIT: ${{ github.event.workflow_run.head_commit.message }}
+        run: |
+          case "$CONCLUSAO" in
+            success)   titulo="$NOME concluiu com sucesso"; cor=3066993 ;;
+            failure)   titulo="$NOME falhou";               cor=15158332 ;;
+            cancelled) titulo="$NOME foi cancelado";        cor=9807270 ;;
+            *)         titulo="$NOME terminou: $CONCLUSAO"; cor=16776960 ;;
+          esac
+          jq -n \
+            --arg titulo "$titulo" \
+            --arg descricao "$(printf '%s' "$TITULO_COMMIT" | head -n 1)" \
+            --arg url "$URL_EXECUCAO" \
+            --arg autor "$AUTOR" \
+            --arg avatar "$AVATAR" \
+            --arg repositorio "$REPOSITORIO" \
+            --arg branch "$BRANCH" \
+            --arg sha "${SHA:0:7}" \
+            --arg conclusao "$CONCLUSAO" \
+            --arg data "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson cor "$cor" \
+            '{
+              username: "Alertas do Encurtador",
+              embeds: [{
+                title: $titulo,
+                description: $descricao,
+                url: $url,
+                color: $cor,
+                timestamp: $data,
+                author: { name: $autor, icon_url: $avatar },
+                fields: [
+                  { name: "Repositorio", value: $repositorio, inline: true },
+                  { name: "Branch", value: $branch, inline: true },
+                  { name: "Commit", value: $sha, inline: true },
+                  { name: "Resultado", value: $conclusao, inline: true }
+                ],
+                footer: { text: "GitHub Actions" }
+              }]
+            }' > payload.json
+
+      - name: Monta o alerta de teste manual
+        if: steps.webhook.outputs.configurado == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          REPOSITORIO: ${{ github.repository }}
+          AUTOR: ${{ github.actor }}
+        run: |
+          jq -n \
+            --arg repositorio "$REPOSITORIO" \
+            --arg autor "$AUTOR" \
+            --arg data "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              username: "Alertas do Encurtador",
+              embeds: [{
+                title: "Teste manual de alerta",
+                description: "Integracao entre GitHub Actions e Discord funcionando.",
+                color: 5814783,
+                timestamp: $data,
+                fields: [
+                  { name: "Repositorio", value: $repositorio, inline: true },
+                  { name: "Disparado por", value: $autor, inline: true }
+                ],
+                footer: { text: "GitHub Actions" }
+              }]
+            }' > payload.json
+
+      - name: Envia o alerta para o Discord
+        if: steps.webhook.outputs.configurado == 'true'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          codigo=$(curl -sS -o resposta.txt -w '%{http_code}' \
+            -H "Content-Type: application/json" \
+            -X POST -d @payload.json "$DISCORD_WEBHOOK")
+          echo "Resposta HTTP do Discord: $codigo"
+          if [ "$codigo" -ge 400 ]; then
+            cat resposta.txt
+            exit 1
+          fi
+          echo "Alerta enviado para o Discord (HTTP $codigo)." >> "$GITHUB_STEP_SUMMARY"
